@@ -1,16 +1,43 @@
-# React + Vite
+# Nutrice — Point of Sale (POS) Progressive Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Nutrice is a lightweight, high-performance Progressive Web App (PWA) designed to streamline in-store operations, sales tracking, and inventory management for a retail popsicle business. Built with React and Firebase, it delivers real-time cloud synchronization, offline-first reliability, and a native-like mobile experience.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Key Features
 
-## React Compiler
+- **Real-Time Data Sync:** Live inventory tracking, order updates, and sales recording powered by Firebase Firestore.
+- **Dynamic Catalog Management:** 42-item structured product catalog with inline editing and multi-tier price filtering.
+- **Session & Shift Management:** Session-persistent states allowing staff to track daily cash flows, active registers, and historical sales across shifts.
+- **Analytics & Daily Reporting:** Instant summaries of revenue, item turnover rates, and transaction velocity.
+- **PWA & Mobile-First UX:** Standalone install capability (iOS Home Screen / Android PWA), adaptive layouts with Tailwind CSS, and custom toast notifications.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Frontend:** React, Tailwind CSS
+- **Backend & Database:** Firebase (Firestore, Realtime Updates)
+- **Deployment & Hosting:** Vercel
+
+---
+
+## Project Structure
+
+```text
+nutrice-pos/
+├── public/
+│   ├── favicon.ico
+│   ├── manifest.json          # PWA configuration
+│   └── icons/                 # App launcher & PWA icons
+├── src/
+│   ├── assets/                # Static media and local resources
+│   ├── components/            # Reusable UI elements (Modals, Toasts, Cards)
+│   ├── context/               # Global state & session providers
+│   ├── hooks/                 # Custom React hooks (Firebase listeners, Cart logic)
+│   ├── services/              # Firebase configuration & database APIs
+│   ├── utils/                 # Price calculations, formatters, and helpers
+│   ├── App.jsx                # Main application component
+│   └── index.jsx              # Entry point
+├── tailwind.config.js
+└── package.json
