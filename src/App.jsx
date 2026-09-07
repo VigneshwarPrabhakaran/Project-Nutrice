@@ -8,11 +8,11 @@ import {
 import { INITIAL_POPSICLES } from './defaultItems';
 import { 
   Play, Square, Plus, Minus, ShoppingBag, Trash2, Edit3, Check, 
-  LayoutDashboard, History, Settings, Sparkles, X, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Receipt 
+  LayoutDashboard, History, Settings, Sparkles, X, AlertCircle, CheckCircle2, 
+  ChevronDown, ChevronUp, Receipt, PauseCircle, PlayCircle
 } from 'lucide-react';
 
 const GREETINGS = [
-  // Sales & Store Success
   "✨ Today is your luckiest day!",
   "🚀 Big sales are coming your way today!",
   "🍦 Every customer leaves with a smile!",
@@ -27,8 +27,6 @@ const GREETINGS = [
   "🎉 Best of sales to you today!",
   "☀️ Today’s forecast: 100% chance of success!",
   "👑 Turning sweet treats into big dreams today!",
-
-  // Patience, Journey & Mindset
   "⏳ Great things take time—keep going!",
   "🛣️ Enjoy the journey, step by step!",
   "❤️ Trust the process and love the hustle!",
@@ -41,8 +39,6 @@ const GREETINGS = [
   "🏆 Small daily wins lead to massive success!",
   "🚀 Today is another step toward your big dream!",
   "🔥 Patience, passion, and persistence!",
-
-  // Boss & Entrepreneur Energy
   "⚡ You are the boss of your own destiny!",
   "💖 Believe in your passion today!",
   "🏁 You’ve got the vision, now go execute!",
@@ -78,11 +74,16 @@ export default function App() {
   const [items, setItems] = useState(INITIAL_POPSICLES);
   const [selectedTier, setSelectedTier] = useState("All");
   const [activeSession, setActiveSession] = useState(null);
+  
+  // Register & Bill State
   const [cart, setCart] = useState([]);
+  const [activeOrderId, setActiveOrderId] = useState(null); // Preserves ID if resuming a held order
+  const [heldBills, setHeldBills] = useState([]);
+  
   const [sessionSales, setSessionSales] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
   
-  // UI & Custom Notification States
+  // UI States
   const [editingItemId, setEditingItemId] = useState(null);
   const [tempPrice, setTempPrice] = useState("");
   const [newItemName, setNewItemName] = useState("");
@@ -111,11 +112,10 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // 1. Firebase Sync & Mandatory 42-Item Seeding
+  // 1. Firebase Sync & Catalog Seeding
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "menu_items"), async (snapshot) => {
       if (snapshot.empty || snapshot.docs.length < 42) {
-        // Automatically sync all 42 official poster items into Firestore
         for (const pop of INITIAL_POPSICLES) {
           await setDoc(doc(db, "menu_items", pop.id), pop, { merge: true });
         }
@@ -186,6 +186,12 @@ export default function App() {
 
   const handleEndSession = async () => {
     if (!activeSession) return;
+    if (heldBills.length > 0) {
+      showNotification(`Please resolve or clear the ${heldBills.length} held bill(s) first!`, "error");
+      setActiveTab("held");
+      return;
+    }
+
     const totalRevenue = sessionSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
     const totalItems = sessionSales.reduce((acc, curr) => acc + curr.totalItems, 0);
     
@@ -204,6 +210,8 @@ export default function App() {
       await updateDoc(doc(db, "sessions", activeSession.id), closedSessionRecord);
       setCompletedSummary(closedSessionRecord);
       setCart([]);
+      setActiveOrderId(null);
+      setHeldBills([]);
     } catch (e) {
       showNotification("Database error: Could not end session", "error");
     }
@@ -233,16 +241,58 @@ export default function App() {
     }).filter(Boolean));
   };
 
+  // Park / Hold Current Bill
+  const handleHoldBill = () => {
+    if (cart.length === 0 || !activeSession) return;
+
+    // Use current activeOrderId or mint a new one based on completed + held orders count
+    const billOrderId = activeOrderId || `${activeSession.id}-ORD${sessionSales.length + heldBills.length + 1}`;
+    const totalAmount = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
+    const totalItems = cart.reduce((acc, i) => acc + i.qty, 0);
+
+    const heldRecord = {
+      orderId: billOrderId,
+      items: [...cart],
+      totalAmount,
+      totalItems,
+      heldAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setHeldBills(prev => [heldRecord, ...prev]);
+    setCart([]);
+    setActiveOrderId(null);
+    showNotification(`Bill ${billOrderId} parked on hold!`, "success");
+  };
+
+  // Resume a Parked Bill
+  const handleResumeBill = (billToResume) => {
+    if (cart.length > 0) {
+      showNotification("Current register has items. Please record or hold them first!", "error");
+      return;
+    }
+    setCart(billToResume.items);
+    setActiveOrderId(billToResume.orderId);
+    setHeldBills(prev => prev.filter(b => b.orderId !== billToResume.orderId));
+    setActiveTab("session");
+    showNotification(`Resumed ${billToResume.orderId}`, "success");
+  };
+
+  // Discard a Parked Bill
+  const handleDiscardHeldBill = (orderId) => {
+    setHeldBills(prev => prev.filter(b => b.orderId !== orderId));
+    showNotification(`Held bill ${orderId} discarded`, "error");
+  };
+
+  // Complete / Record Active Sale
   const handleCheckout = async () => {
     if (cart.length === 0 || !activeSession) return;
     const totalAmount = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
     const totalItems = cart.reduce((acc, i) => acc + i.qty, 0);
     
-    const orderNumber = sessionSales.length + 1;
-    const orderId = `${activeSession.id}-ORD${orderNumber}`;
+    const finalOrderId = activeOrderId || `${activeSession.id}-ORD${sessionSales.length + 1}`;
 
     const newOrder = {
-      id: orderId,
+      id: finalOrderId,
       items: cart,
       totalAmount,
       totalItems,
@@ -251,9 +301,10 @@ export default function App() {
     };
 
     try {
-      await setDoc(doc(db, `sessions/${activeSession.id}/orders`, orderId), newOrder);
+      await setDoc(doc(db, `sessions/${activeSession.id}/orders`, finalOrderId), newOrder);
       setCart([]);
-      showNotification(`Order ${orderId} recorded!`, "success");
+      setActiveOrderId(null);
+      showNotification(`Order ${finalOrderId} recorded!`, "success");
     } catch (e) {
       showNotification("Database error: Could not save sale", "error");
     }
@@ -298,7 +349,6 @@ export default function App() {
   const currentTotal = sessionSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
   const cartTotal = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
 
-  // Filter & Sort menu items cleanly by price
   const filteredItems = (selectedTier === "All" 
     ? items 
     : items.filter(item => item.price === parseInt(selectedTier))
@@ -382,6 +432,20 @@ export default function App() {
       {/* TAB 1: SESSION / POS */}
       {activeTab === "session" && (
         <div className="flex-1 p-3">
+          {activeOrderId && (
+            <div className="bg-amber-500 text-white px-3 py-1.5 rounded-xl mb-3 flex items-center justify-between text-xs font-bold shadow-xs">
+              <span className="flex items-center gap-1.5">
+                <PlayCircle size={15} /> Resumed Order: {activeOrderId}
+              </span>
+              <button 
+                onClick={() => { setActiveOrderId(null); setCart([]); }} 
+                className="text-[10px] underline hover:text-amber-100"
+              >
+                Cancel Ticket
+              </button>
+            </div>
+          )}
+
           <div className="bg-white p-4 mb-3 rounded-2xl shadow-xs border border-slate-200 flex justify-between items-center">
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -441,7 +505,63 @@ export default function App() {
         </div>
       )}
 
-      {/* TAB 2: HISTORY */}
+      {/* TAB 2: HELD BILLS */}
+      {activeTab === "held" && (
+        <div className="flex-1 p-3 space-y-3">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Held / Parked Bills</h2>
+            <span className="text-xs font-semibold text-amber-600">{heldBills.length} on hold</span>
+          </div>
+
+          {heldBills.length === 0 ? (
+            <div className="bg-white p-8 rounded-2xl text-center border border-slate-200 mt-10">
+              <PauseCircle size={40} className="mx-auto text-slate-300 mb-2" />
+              <p className="text-sm font-bold text-slate-700">No held bills right now</p>
+              <p className="text-xs text-slate-400 mt-1">When parallel customers arrive, tap "Hold Bill" in the cart to park their order here.</p>
+            </div>
+          ) : (
+            heldBills.map((bill) => (
+              <div key={bill.orderId} className="bg-white rounded-2xl shadow-xs border border-slate-200 p-3.5 space-y-2.5">
+                <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                  <div>
+                    <span className="text-[10px] font-extrabold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
+                      {bill.orderId}
+                    </span>
+                    <span className="text-[11px] text-slate-400 ml-2">Held at {bill.heldAt}</span>
+                  </div>
+                  <span className="text-sm font-black text-rose-600">₹{bill.totalAmount}</span>
+                </div>
+
+                <div className="text-xs space-y-1 divide-y divide-slate-50">
+                  {bill.items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-slate-600 pt-1 first:pt-0">
+                      <span>{item.name} <span className="text-slate-400 font-bold">x{item.qty}</span></span>
+                      <span className="font-semibold text-slate-800">₹{item.price * item.qty}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button 
+                    onClick={() => handleResumeBill(bill)}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 shadow-xs"
+                  >
+                    <PlayCircle size={14} /> Resume Bill
+                  </button>
+                  <button 
+                    onClick={() => handleDiscardHeldBill(bill.orderId)}
+                    className="px-3 bg-rose-50 hover:bg-rose-100 text-rose-600 py-2 rounded-xl text-xs font-bold flex items-center justify-center shadow-xs"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: HISTORY */}
       {activeTab === "history" && (
         <div className="flex-1 p-3 space-y-3">
           <div className="flex justify-between items-center">
@@ -460,7 +580,6 @@ export default function App() {
               const isExpanded = expandedSessionId === session.id;
               return (
                 <div key={session.id} className="bg-white rounded-2xl shadow-xs border border-slate-200 overflow-hidden transition-all">
-                  
                   <button 
                     onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
                     className="w-full p-4 text-left flex justify-between items-center hover:bg-slate-50 transition-colors"
@@ -483,7 +602,6 @@ export default function App() {
                     </div>
                   </button>
 
-                  {/* Itemized Sales View */}
                   {isExpanded && (
                     <div className="bg-slate-50/80 border-t border-slate-100 p-3.5 space-y-3">
                       <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider pb-1 border-b border-slate-200">
@@ -515,7 +633,6 @@ export default function App() {
                       </div>
                     </div>
                   )}
-
                 </div>
               );
             })
@@ -523,7 +640,7 @@ export default function App() {
         </div>
       )}
 
-      {/* TAB 3: EDITABLES */}
+      {/* TAB 4: EDITABLES */}
       {activeTab === "editables" && (
         <div className="flex-1 p-3 space-y-4">
           <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Manage Prices & Items</h2>
@@ -615,15 +732,19 @@ export default function App() {
         </div>
       )}
 
-      {/* FLOATING CART SHEET */}
+      {/* FLOATING CART SHEET WITH RECORD & HOLD ACTIONS */}
       {activeTab === "session" && cart.length > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-md mx-auto pointer-events-none z-20 px-2">
           <div className="bg-white/95 border border-slate-200 rounded-2xl shadow-2xl p-3.5 pointer-events-auto backdrop-blur-md">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                <ShoppingBag size={14} className="text-rose-500" /> Current Customer Order ({cart.reduce((a, b) => a + b.qty, 0)})
+                <ShoppingBag size={14} className="text-rose-500" /> Current Order ({cart.reduce((a, b) => a + b.qty, 0)})
+                {activeOrderId && <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded font-bold">[{activeOrderId}]</span>}
               </span>
-              <button onClick={() => setCart([])} className="text-[11px] text-rose-400 font-semibold flex items-center gap-0.5 hover:text-rose-600">
+              <button 
+                onClick={() => { setCart([]); setActiveOrderId(null); }} 
+                className="text-[11px] text-rose-400 font-semibold flex items-center gap-0.5 hover:text-rose-600"
+              >
                 <Trash2 size={12} /> Clear
               </button>
             </div>
@@ -644,13 +765,25 @@ export default function App() {
               ))}
             </div>
 
-            <button 
-              onClick={handleCheckout}
-              className="w-full bg-rose-500 hover:bg-rose-600 active:scale-98 text-white py-2 rounded-xl font-bold flex justify-between items-center px-4 shadow-md text-xs transition-all"
-            >
-              <span>Record Sale</span>
-              <span className="text-sm font-black">₹{cartTotal} →</span>
-            </button>
+            <div className="flex gap-2">
+              {/* Hold Action Button */}
+              <button 
+                onClick={handleHoldBill}
+                className="flex-1 bg-amber-500 hover:bg-amber-600 active:scale-98 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1 shadow-md text-xs transition-all"
+              >
+                <PauseCircle size={14} />
+                <span>Hold Bill</span>
+              </button>
+
+              {/* Complete Action Button */}
+              <button 
+                onClick={handleCheckout}
+                className="flex-1 bg-rose-500 hover:bg-rose-600 active:scale-98 text-white py-2 rounded-xl font-bold flex justify-between items-center px-3 shadow-md text-xs transition-all"
+              >
+                <span>Record Sale</span>
+                <span className="text-sm font-black">₹{cartTotal} →</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -696,7 +829,7 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM NAVIGATION */}
+      {/* BOTTOM NAVIGATION WITH HELD TAB & BADGE */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 h-16 flex justify-around items-center z-30 shadow-lg">
         <button 
           onClick={() => setActiveTab("session")}
@@ -704,6 +837,21 @@ export default function App() {
         >
           <LayoutDashboard size={20} />
           <span className="text-[10px]">Session</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab("held")}
+          className={`relative flex flex-col items-center gap-1 flex-1 py-1 transition-colors ${activeTab === "held" ? "text-amber-500 font-bold" : "text-slate-400 font-medium"}`}
+        >
+          <div className="relative">
+            <PauseCircle size={20} />
+            {heldBills.length > 0 && (
+              <span className="absolute -top-1 -right-2 bg-amber-500 text-white text-[9px] font-black rounded-full h-4 w-4 flex items-center justify-center ring-2 ring-white">
+                {heldBills.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px]">Held ({heldBills.length})</span>
         </button>
 
         <button 
