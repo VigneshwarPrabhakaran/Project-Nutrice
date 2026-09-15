@@ -3,13 +3,13 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAV_scHiCr2NgY1kE5i6v9WR_kXNP1zvhg",
-  authDomain: "project-nutrice-914c6.firebaseapp.com",
-  projectId: "project-nutrice-914c6",
-  storageBucket: "project-nutrice-914c6.firebasestorage.app",
-  messagingSenderId: "127711837566",
-  appId: "1:127711837566:web:6ad8e430eb22d06630472f",
-  measurementId: "G-0DN2P3N3BQ"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 const app = initializeApp(firebaseConfig);

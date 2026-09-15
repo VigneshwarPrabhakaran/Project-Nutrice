@@ -154,16 +154,21 @@ export default function App() {
   const syncCatalogToFirebase = async () => {
     setIsSyncing(true);
     try {
+      console.log("Starting batch sync of", ALL_MENU_ITEMS.length, "items...");
       const batch = writeBatch(db);
+      
       ALL_MENU_ITEMS.forEach((item) => {
         const docRef = doc(db, "menu_items", item.id);
         batch.set(docRef, item, { merge: true });
       });
+
+      // Commit the batch
       await batch.commit();
+      console.log("Batch successfully written to Firestore!");
       showNotification(`Successfully synced ${ALL_MENU_ITEMS.length} items to database!`, "success");
     } catch (error) {
-      console.error("Sync Error:", error);
-      showNotification("Failed to sync catalog with database", "error");
+      console.error("Sync Failed with Error:", error);
+      showNotification(`Sync Error: ${error.message || "Check permissions or network"}`, "error");
     } finally {
       setIsSyncing(false);
     }
