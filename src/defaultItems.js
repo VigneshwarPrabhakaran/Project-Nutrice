@@ -1,4 +1,5 @@
 // src/defaultItems.js
+
 export const INITIAL_POPSICLES = [
   // --- ₹10 POPSICLES ---
   { id: "p10_1", name: "Grape", price: 10, category: "Fruit", color: "bg-purple-600" },
@@ -42,7 +43,7 @@ export const INITIAL_POPSICLES = [
   { id: "p40_1", name: "Kunafa Pistachio", price: 40, category: "Specialty", color: "bg-emerald-500" },
   { id: "p40_2", name: "Lotus Biscoff", price: 40, category: "Specialty", color: "bg-amber-700" },
   { id: "p40_3", name: "Ferrero Rocher", price: 40, category: "Specialty", color: "bg-amber-900" },
-  { id: "p40_4", name: "Dry Fruit Kulfi", price: 40, category: "Kulfi", color: "bg-amber-500" },
+  { id: "p40_4", name: "Dry Fruit", price: 40, category: "Specialty", color: "bg-amber-600" },
   { id: "p40_5", name: "Badam Kulfi", price: 40, category: "Kulfi", color: "bg-amber-400" },
   { id: "p40_6", name: "Mava Kulfi", price: 40, category: "Kulfi", color: "bg-orange-300" },
   { id: "p40_7", name: "Nutrice Kulfi", price: 40, category: "Kulfi", color: "bg-rose-500" },
@@ -53,4 +54,106 @@ export const INITIAL_POPSICLES = [
   { id: "p50_2", name: "Chocolate Pop", price: 50, category: "Exotic", color: "bg-amber-950" },
   { id: "p50_3", name: "Bounty", price: 50, category: "Exotic", color: "bg-blue-600" },
   { id: "p50_4", name: "Ki Berry", price: 50, category: "Exotic", color: "bg-rose-500" }
+];
+
+// --- NUTRICE FANGO ICE CREAMS (MULTI-SIZE) ---
+export const INITIAL_FANGO_ICE_CREAMS = [
+  {
+    id: "fango_vanilla",
+    name: "Vanilla",
+    category: "Classic",
+    color: "bg-amber-100",
+    prices: { small: 30, medium: 50, "500ml": 140, "1000ml": 260, "4L": 800 }
+  },
+  {
+    id: "fango_strawberry",
+    name: "Strawberry",
+    category: "Fruit",
+    color: "bg-rose-400",
+    prices: { small: 35, medium: 60, "500ml": 160, "1000ml": 300, "4L": 900 }
+  },
+  {
+    id: "fango_pista",
+    name: "Pista",
+    category: "Nutty",
+    color: "bg-emerald-400",
+    prices: { small: 40, medium: 60, "500ml": 180, "1000ml": 350, "4L": 900 }
+  },
+  {
+    id: "fango_chocolate",
+    name: "Chocolate",
+    category: "Choco",
+    color: "bg-amber-950",
+    prices: { small: 40, medium: 70, "500ml": 220, "1000ml": 400, "4L": 1200 }
+  },
+  {
+    id: "fango_avocado",
+    name: "Avocado",
+    category: "Exotic",
+    color: "bg-lime-600",
+    prices: { small: 40, medium: 70, "500ml": 220, "1000ml": 400, "4L": 1400 }
+  },
+  {
+    id: "fango_spanish",
+    name: "Spanish Delight",
+    category: "Creamy",
+    color: "bg-orange-400",
+    prices: { small: 40, medium: 80, "500ml": 230, "1000ml": 420, "4L": 1200 }
+  },
+  {
+    id: "fango_tender",
+    name: "Tender Coconut",
+    category: "Exotic",
+    color: "bg-emerald-600",
+    prices: { small: 50, medium: 80, "500ml": 230, "1000ml": 420, "4L": 1500 }
+  },
+  {
+    id: "fango_oreo",
+    name: "Oreo",
+    category: "Creamy",
+    color: "bg-slate-800",
+    prices: { small: 50, medium: 80, "500ml": 230, "1000ml": 420, "4L": 1200 }
+  },
+  {
+    id: "fango_red_velvet",
+    name: "Red Velvet",
+    category: "Creamy",
+    color: "bg-rose-600",
+    prices: { small: 50, medium: 80, "500ml": 240, "1000ml": 430, "4L": 1300 }
+  },
+  {
+    id: "fango_blueberry",
+    name: "Blueberry",
+    category: "Berry",
+    color: "bg-indigo-600",
+    prices: { small: 60, medium: 90, "500ml": 260, "1000ml": 490, "4L": 1200 }
+  },
+  {
+    id: "fango_dryfruit",
+    name: "Dry Fruit",
+    category: "Nutty",
+    color: "bg-amber-600",
+    prices: { small: 60, medium: 100, "500ml": 290, "1000ml": 550, "4L": 1500 }
+  },
+  {
+    id: "fango_lotus",
+    name: "Lotus Biscoff",
+    category: "Specialty",
+    color: "bg-amber-700",
+    prices: { small: 60, medium: 100, "500ml": 290, "1000ml": 550, "4L": 1600 }
+  }
+];
+
+// --- FLATTENED INDIVIDUAL ITEMS (OPTIONAL CONVENIENCE EXPORT) ---
+export const ALL_MENU_ITEMS = [
+  ...INITIAL_POPSICLES,
+  ...INITIAL_FANGO_ICE_CREAMS.flatMap(item =>
+    Object.entries(item.prices).map(([size, price]) => ({
+      id: `${item.id}_${size}`,
+      name: `${item.name} (${size})`,
+      price,
+      category: item.category,
+      color: item.color
+    }))
+  )
 ];
