@@ -3,13 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
 import { 
   collection, addDoc, updateDoc, doc, setDoc,
-  onSnapshot, query, orderBy 
+  onSnapshot, query, orderBy, writeBatch
 } from 'firebase/firestore';
-import { INITIAL_POPSICLES } from './defaultItems';
+import { ALL_MENU_ITEMS } from './defaultItems';
 import { 
   Play, Square, Plus, Minus, ShoppingBag, Trash2, Edit3, Check, 
   LayoutDashboard, History, Settings, Sparkles, X, AlertCircle, CheckCircle2, 
-  ChevronDown, ChevronUp, Receipt, PauseCircle, PlayCircle
+  ChevronDown, ChevronUp, Receipt, PauseCircle, PlayCircle, RefreshCw
 } from 'lucide-react';
 
 const GREETINGS = [
@@ -71,7 +71,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("session");
   const [greeting, setGreeting] = useState("");
   
-  const [items, setItems] = useState(INITIAL_POPSICLES);
+  const [items, setItems] = useState(ALL_MENU_ITEMS);
   const [selectedTier, setSelectedTier] = useState("All");
   const [activeSession, setActiveSession] = useState(null);
   
@@ -93,6 +93,7 @@ export default function App() {
   const [completedSummary, setCompletedSummary] = useState(null);
   const [toast, setToast] = useState(null);
   const [expandedSessionId, setExpandedSessionId] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const showNotification = (message, type = 'error') => {
     setToast({ message, type });
@@ -115,9 +116,17 @@ export default function App() {
   // 1. Firebase Sync & Catalog Seeding
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "menu_items"), async (snapshot) => {
-      if (snapshot.empty || snapshot.docs.length < 42) {
-        for (const pop of INITIAL_POPSICLES) {
-          await setDoc(doc(db, "menu_items", pop.id), pop, { merge: true });
+      if (snapshot.empty) {
+        // Initial auto-seed if firestore collection is totally empty
+        try {
+          const batch = writeBatch(db);
+          ALL_MENU_ITEMS.forEach((item) => {
+            const docRef = doc(db, "menu_items", item.id);
+            batch.set(docRef, item, { merge: true });
+          });
+          await batch.commit();
+        } catch (e) {
+          console.error("Auto-seeding error:", e);
         }
       } else {
         const fetchedItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -128,6 +137,25 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Manual Catalog Sync to Cloud Function
+  const syncCatalogToFirebase = async () => {
+    setIsSyncing(true);
+    try {
+      const batch = writeBatch(db);
+      ALL_MENU_ITEMS.forEach((item) => {
+        const docRef = doc(db, "menu_items", item.id);
+        batch.set(docRef, item, { merge: true });
+      });
+      await batch.commit();
+      showNotification(`Successfully synced ${ALL_MENU_ITEMS.length} items to database!`, "success");
+    } catch (error) {
+      console.error("Sync Error:", error);
+      showNotification("Failed to sync catalog with database", "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // 2. Firebase Sync: Active & Past Sessions
   useEffect(() => {
@@ -245,7 +273,6 @@ export default function App() {
   const handleHoldBill = () => {
     if (cart.length === 0 || !activeSession) return;
 
-    // Use current activeOrderId or mint a new one based on completed + held orders count
     const billOrderId = activeOrderId || `${activeSession.id}-ORD${sessionSales.length + heldBills.length + 1}`;
     const totalAmount = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
     const totalItems = cart.reduce((acc, i) => acc + i.qty, 0);
@@ -343,16 +370,19 @@ export default function App() {
     }
     setNewItemName("");
     setNewItemPrice("");
-    showNotification("New popsicle added to menu!", "success");
+    showNotification("New item added to menu!", "success");
   };
 
   const currentTotal = sessionSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
   const cartTotal = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
 
-  const filteredItems = (selectedTier === "All" 
-    ? items 
-    : items.filter(item => item.price === parseInt(selectedTier))
-  ).sort((a, b) => a.price - b.price);
+  // Flexible category and price tier filtering
+  const filteredItems = items.filter(item => {
+    if (selectedTier === "All") return true;
+    if (selectedTier === "Ice Creams") return item.id.startsWith("fango_");
+    if (selectedTier === "Popsicles") return !item.id.startsWith("fango_");
+    return item.price === parseInt(selectedTier);
+  }).sort((a, b) => a.price - b.price);
 
   if (showSplash) {
     return (
@@ -364,7 +394,7 @@ export default function App() {
 
           <div>
             <h1 className="text-3xl font-black tracking-wider uppercase">NUTRICE</h1>
-            <p className="text-xs text-rose-100 font-medium tracking-wide mt-1">Popsicle Store POS</p>
+            <p className="text-xs text-rose-100 font-medium tracking-wide mt-1">Popsicle & Ice Cream POS</p>
           </div>
 
           <div className="bg-white/10 p-6 rounded-3xl border border-white/20 shadow-xl max-w-xs mx-auto">
@@ -409,7 +439,7 @@ export default function App() {
       <header className="bg-rose-500 text-white p-4 sticky top-0 z-30 shadow-md flex justify-between items-center">
         <div>
           <h1 className="text-xl font-black tracking-wide">NUTRICE</h1>
-          <p className="text-[11px] text-rose-100 font-medium">Popsicle POS System</p>
+          <p className="text-[11px] text-rose-100 font-medium">POS System</p>
         </div>
         
         {activeSession ? (
@@ -459,9 +489,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* Price Category Filter Chips */}
+          {/* Category & Price Filter Chips */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
-            {["All", "10", "25", "30", "40", "50"].map((tier) => (
+            {["All", "Popsicles", "Ice Creams", "10", "25", "30", "40", "50"].map((tier) => (
               <button
                 key={tier}
                 onClick={() => setSelectedTier(tier)}
@@ -471,7 +501,7 @@ export default function App() {
                     : "bg-white text-slate-600 border border-slate-200"
                 }`}
               >
-                {tier === "All" ? `All (${items.length})` : `₹${tier}`}
+                {tier === "All" ? `All (${items.length})` : isNaN(tier) ? tier : `₹${tier}`}
               </button>
             ))}
           </div>
@@ -643,15 +673,34 @@ export default function App() {
       {/* TAB 4: EDITABLES */}
       {activeTab === "editables" && (
         <div className="flex-1 p-3 space-y-4">
-          <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Manage Prices & Items</h2>
+          <div className="flex justify-between items-center">
+            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Manage Prices & Items</h2>
+          </div>
+
+          {/* CATALOG SYNC ACTION BOX */}
+          <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex justify-between items-center shadow-xs">
+            <div>
+              <h3 className="font-bold text-xs text-rose-900">Sync Default Menu to Cloud</h3>
+              <p className="text-[10px] text-rose-600 mt-0.5">Push latest Popsicles & Fango Ice Creams to Firebase</p>
+            </div>
+            <button 
+              type="button"
+              onClick={syncCatalogToFirebase}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs transition-all disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+              <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
+            </button>
+          </div>
 
           <form onSubmit={handleAddPopsicle} className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
-            <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Popsicle Flavor</h3>
+            <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Item</h3>
             
             <div className="space-y-2">
               <input 
                 type="text" 
-                placeholder="Flavor Name (e.g. Lime Mint)" 
+                placeholder="Item Name (e.g. Vanilla Scoop)" 
                 className="w-full text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
@@ -766,7 +815,6 @@ export default function App() {
             </div>
 
             <div className="flex gap-2">
-              {/* Hold Action Button */}
               <button 
                 onClick={handleHoldBill}
                 className="flex-1 bg-amber-500 hover:bg-amber-600 active:scale-98 text-white py-2 rounded-xl font-bold flex items-center justify-center gap-1 shadow-md text-xs transition-all"
@@ -775,7 +823,6 @@ export default function App() {
                 <span>Hold Bill</span>
               </button>
 
-              {/* Complete Action Button */}
               <button 
                 onClick={handleCheckout}
                 className="flex-1 bg-rose-500 hover:bg-rose-600 active:scale-98 text-white py-2 rounded-xl font-bold flex justify-between items-center px-3 shadow-md text-xs transition-all"
@@ -805,7 +852,7 @@ export default function App() {
             <div className="bg-slate-50 p-4 rounded-2xl text-center space-y-1">
               <span className="text-xs text-slate-400 font-semibold uppercase">Total Revenue Generated</span>
               <div className="text-3xl font-black text-emerald-600">₹{completedSummary.totalRevenue}</div>
-              <p className="text-xs text-slate-500 pt-1">{completedSummary.ordersCount} orders fulfilled • {completedSummary.totalItems} popsicles sold</p>
+              <p className="text-xs text-slate-500 pt-1">{completedSummary.ordersCount} orders fulfilled • {completedSummary.totalItems} items sold</p>
             </div>
 
             <div className="space-y-2 text-xs text-slate-600">
