@@ -9,8 +9,12 @@ import { ALL_MENU_ITEMS } from './defaultItems';
 import { 
   Play, Square, Plus, Minus, ShoppingBag, Trash2, Edit3, Check, 
   LayoutDashboard, History, Settings, Sparkles, X, AlertCircle, CheckCircle2, 
-  ChevronDown, ChevronUp, Receipt, PauseCircle, PlayCircle, RefreshCw
+  ChevronDown, ChevronUp, Receipt, PauseCircle, PlayCircle, RefreshCw,
+  Lock, KeyRound, LogOut
 } from 'lucide-react';
+
+// You can set VITE_ADMIN_PASSWORD in Vercel environment variables or change default here
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "NutriceAdmin@2026";
 
 const GREETINGS = [
   "✨ Today is your luckiest day!",
@@ -72,9 +76,9 @@ export default function App() {
   const [greeting, setGreeting] = useState("");
   
   const [items, setItems] = useState(ALL_MENU_ITEMS);
-  const [selectedMainCategory, setSelectedMainCategory] = useState("All"); // All | Popsicles | Ice Creams
-  const [selectedPopsicleTier, setSelectedPopsicleTier] = useState("All"); // All | 10 | 25 | 30 | 40 | 50
-  const [selectedIceCreamSize, setSelectedIceCreamSize] = useState("All"); // All | Small | Medium | 500ml | 1000ml | 4L
+  const [selectedMainCategory, setSelectedMainCategory] = useState("All");
+  const [selectedPopsicleTier, setSelectedPopsicleTier] = useState("All");
+  const [selectedIceCreamSize, setSelectedIceCreamSize] = useState("All");
   const [activeSession, setActiveSession] = useState(null);
   
   // Register & Bill State
@@ -85,6 +89,13 @@ export default function App() {
   const [sessionSales, setSessionSales] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
   
+  // Authentication State for Editables
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(() => {
+    return sessionStorage.getItem("nutrice_admin_auth") === "true";
+  });
+  const [enteredPassword, setEnteredPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+
   // UI States
   const [editingItemId, setEditingItemId] = useState(null);
   const [tempPrice, setTempPrice] = useState("");
@@ -156,6 +167,26 @@ export default function App() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  // Auth Handlers
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    if (enteredPassword.trim() === ADMIN_PASSWORD) {
+      setIsAdminAuthenticated(true);
+      sessionStorage.setItem("nutrice_admin_auth", "true");
+      setEnteredPassword("");
+      setAuthError("");
+      showNotification("Admin authenticated!", "success");
+    } else {
+      setAuthError("Incorrect password. Access denied.");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminAuthenticated(false);
+    sessionStorage.removeItem("nutrice_admin_auth");
+    showNotification("Admin logged out", "success");
   };
 
   // 2. Firebase Sync: Active & Past Sessions
@@ -374,18 +405,14 @@ export default function App() {
   const currentTotal = sessionSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
   const cartTotal = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
 
-  // Filter Items by Main Category (Popsicles / Ice Creams) and subcategories (Sizes / Price tiers)
   const filteredItems = items.filter(item => {
     const isIceCream = item.id.startsWith("fango_") || item.itemType === "Ice Cream";
     
-    // Main Category Filter
     if (selectedMainCategory === "Popsicles" && isIceCream) return false;
     if (selectedMainCategory === "Ice Creams" && !isIceCream) return false;
 
-    // Sub-Filter for Popsicles
     if (isIceCream) {
       if (selectedIceCreamSize !== "All") {
-        // match size: Small, Medium, 500ml, 1000ml, 4L
         const itemSize = item.size || (item.name.includes("(") ? item.name.split("(")[1].replace(")", "").trim() : "");
         if (itemSize.toLowerCase() !== selectedIceCreamSize.toLowerCase()) return false;
       }
@@ -503,7 +530,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* LEVEL 1: MAIN CATEGORIES */}
+          {/* MAIN CATEGORIES */}
           <div className="flex items-center gap-2 pb-2">
             {[
               { id: "All", label: `All Items (${items.length})` },
@@ -524,7 +551,7 @@ export default function App() {
             ))}
           </div>
 
-          {/* LEVEL 2: NESTED SUB-CATEGORIES */}
+          {/* SUB-CATEGORIES FOR ICE CREAMS */}
           {selectedMainCategory === "Ice Creams" && (
             <div className="bg-rose-50/70 p-2.5 rounded-2xl border border-rose-100 mb-3 space-y-1.5">
               <div className="flex justify-between items-center px-1">
@@ -736,114 +763,160 @@ export default function App() {
         </div>
       )}
 
-      {/* TAB 4: EDITABLES */}
+      {/* TAB 4: EDITABLES (WITH ADMIN PASSWORD PROTECTION) */}
       {activeTab === "editables" && (
         <div className="flex-1 p-3 space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Manage Prices & Items</h2>
+            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Store Administration</h2>
+            {isAdminAuthenticated && (
+              <button 
+                onClick={handleAdminLogout} 
+                className="flex items-center gap-1 text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-100"
+              >
+                <LogOut size={12} /> Lock Panel
+              </button>
+            )}
           </div>
 
-          {/* CATALOG SYNC ACTION BOX */}
-          <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex justify-between items-center shadow-xs">
-            <div>
-              <h3 className="font-bold text-xs text-rose-900">Sync Default Menu to Cloud</h3>
-              <p className="text-[10px] text-rose-600 mt-0.5">Push latest Popsicles & Fango Ice Creams to Firebase</p>
-            </div>
-            <button 
-              type="button"
-              onClick={syncCatalogToFirebase}
-              disabled={isSyncing}
-              className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs transition-all disabled:opacity-50"
-            >
-              <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
-              <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
-            </button>
-          </div>
-
-          <form onSubmit={handleAddPopsicle} className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
-            <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Popsicle</h3>
-            
-            <div className="space-y-2">
-              <input 
-                type="text" 
-                placeholder="Item Name (e.g. Lime Mint)" 
-                className="w-full text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-                required
-              />
-              
-              <div className="grid grid-cols-2 gap-2">
-                <input 
-                  type="number" 
-                  placeholder="Price (₹)" 
-                  className="text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
-                  value={newItemPrice}
-                  onChange={(e) => setNewItemPrice(e.target.value)}
-                  required
-                />
-                
-                <select 
-                  className="text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500 bg-white font-medium text-slate-700"
-                  value={newItemColor}
-                  onChange={(e) => setNewItemColor(e.target.value)}
-                >
-                  {COLOR_OPTIONS.map((col) => (
-                    <option key={col.value} value={col.value}>
-                      🎨 {col.label}
-                    </option>
-                  ))}
-                </select>
+          {!isAdminAuthenticated ? (
+            /* PASSWORD GATE SCREEN */
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4 my-6">
+              <div className="w-14 h-14 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto">
+                <Lock size={26} />
               </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">Admin Authentication Required</h3>
+                <p className="text-xs text-slate-400 mt-1">Enter the secret store manager password to edit item prices or modify catalog data.</p>
+              </div>
+
+              <form onSubmit={handleAdminLogin} className="space-y-3 pt-2">
+                <div className="relative">
+                  <KeyRound size={16} className="absolute left-3 top-3 text-slate-400" />
+                  <input 
+                    type="password"
+                    placeholder="Enter Admin Password"
+                    className="w-full text-xs pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-rose-500 font-bold"
+                    value={enteredPassword}
+                    onChange={(e) => { setEnteredPassword(e.target.value); setAuthError(""); }}
+                    required
+                  />
+                </div>
+                {authError && <p className="text-xs font-bold text-rose-500 text-left">{authError}</p>}
+                
+                <button 
+                  type="submit"
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs py-3 rounded-xl shadow-md transition-all"
+                >
+                  Unlock Editing Panel
+                </button>
+              </form>
             </div>
+          ) : (
+            /* UNLOCKED EDITING VIEW */
+            <>
+              {/* CATALOG SYNC ACTION BOX */}
+              <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-2xl flex justify-between items-center shadow-xs">
+                <div>
+                  <h3 className="font-bold text-xs text-rose-900">Sync Default Menu to Cloud</h3>
+                  <p className="text-[10px] text-rose-600 mt-0.5">Push latest Popsicles & Fango Ice Creams to Firebase</p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={syncCatalogToFirebase}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs transition-all disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+                  <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>
+                </button>
+              </div>
 
-            <button type="submit" className="w-full bg-rose-500 text-white text-xs font-bold py-2.5 rounded-lg shadow-xs hover:bg-rose-600 transition-colors">
-              Add to Catalog
-            </button>
-          </form>
-
-          <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
-            <h3 className="font-bold text-xs text-slate-700 uppercase">Edit Existing Prices ({items.length})</h3>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {items.map((item) => (
-                <div key={item.id} className="flex justify-between items-center text-xs border-b border-slate-100 pb-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${item.color || 'bg-rose-400'}`} />
-                    <div>
-                      <span className="font-bold text-slate-700">{item.name}</span>
-                      <span className="block text-[10px] text-slate-400">{item.category}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {editingItemId === item.id ? (
-                      <div className="flex items-center gap-1">
-                        <input 
-                          type="number" 
-                          className="w-14 text-xs border border-rose-300 rounded p-1" 
-                          value={tempPrice}
-                          onChange={(e) => setTempPrice(e.target.value)}
-                        />
-                        <button onClick={() => savePriceEdit(item.id)} className="bg-emerald-500 text-white p-1 rounded">
-                          <Check size={12} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-800">₹{item.price}</span>
-                        <button 
-                          onClick={() => { setEditingItemId(item.id); setTempPrice(item.price); }} 
-                          className="text-slate-400 hover:text-rose-500 p-1"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    )}
+              <form onSubmit={handleAddPopsicle} className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
+                <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Item</h3>
+                
+                <div className="space-y-2">
+                  <input 
+                    type="text" 
+                    placeholder="Item Name (e.g. Lime Mint)" 
+                    className="w-full text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    required
+                  />
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="Price (₹)" 
+                      className="text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
+                      value={newItemPrice}
+                      onChange={(e) => setNewItemPrice(e.target.value)}
+                      required
+                    />
+                    
+                    <select 
+                      className="text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500 bg-white font-medium text-slate-700"
+                      value={newItemColor}
+                      onChange={(e) => setNewItemColor(e.target.value)}
+                    >
+                      {COLOR_OPTIONS.map((col) => (
+                        <option key={col.value} value={col.value}>
+                          🎨 {col.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+
+                <button type="submit" className="w-full bg-rose-500 text-white text-xs font-bold py-2.5 rounded-lg shadow-xs hover:bg-rose-600 transition-colors">
+                  Add to Catalog
+                </button>
+              </form>
+
+              <div className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
+                <h3 className="font-bold text-xs text-slate-700 uppercase">Edit Existing Prices ({items.length})</h3>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {items.map((item) => (
+                    <div key={item.id} className="flex justify-between items-center text-xs border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${item.color || 'bg-rose-400'}`} />
+                        <div>
+                          <span className="font-bold text-slate-700">{item.name}</span>
+                          <span className="block text-[10px] text-slate-400">{item.category}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {editingItemId === item.id ? (
+                          <div className="flex items-center gap-1">
+                            <input 
+                              type="number" 
+                              className="w-14 text-xs border border-rose-300 rounded p-1" 
+                              value={tempPrice}
+                              onChange={(e) => setTempPrice(e.target.value)}
+                            />
+                            <button onClick={() => savePriceEdit(item.id)} className="bg-emerald-500 text-white p-1 rounded">
+                              <Check size={12} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-800">₹{item.price}</span>
+                            <button 
+                              onClick={() => { setEditingItemId(item.id); setTempPrice(item.price); }} 
+                              className="text-slate-400 hover:text-rose-500 p-1"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
