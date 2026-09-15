@@ -72,12 +72,14 @@ export default function App() {
   const [greeting, setGreeting] = useState("");
   
   const [items, setItems] = useState(ALL_MENU_ITEMS);
-  const [selectedTier, setSelectedTier] = useState("All");
+  const [selectedMainCategory, setSelectedMainCategory] = useState("All"); // All | Popsicles | Ice Creams
+  const [selectedPopsicleTier, setSelectedPopsicleTier] = useState("All"); // All | 10 | 25 | 30 | 40 | 50
+  const [selectedIceCreamSize, setSelectedIceCreamSize] = useState("All"); // All | Small | Medium | 500ml | 1000ml | 4L
   const [activeSession, setActiveSession] = useState(null);
   
   // Register & Bill State
   const [cart, setCart] = useState([]);
-  const [activeOrderId, setActiveOrderId] = useState(null); // Preserves ID if resuming a held order
+  const [activeOrderId, setActiveOrderId] = useState(null);
   const [heldBills, setHeldBills] = useState([]);
   
   const [sessionSales, setSessionSales] = useState([]);
@@ -117,7 +119,6 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "menu_items"), async (snapshot) => {
       if (snapshot.empty) {
-        // Initial auto-seed if firestore collection is totally empty
         try {
           const batch = writeBatch(db);
           ALL_MENU_ITEMS.forEach((item) => {
@@ -138,7 +139,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Manual Catalog Sync to Cloud Function
+  // Manual Catalog Sync to Cloud
   const syncCatalogToFirebase = async () => {
     setIsSyncing(true);
     try {
@@ -245,17 +246,17 @@ export default function App() {
     }
   };
 
-  const addToCart = (popsicle) => {
+  const addToCart = (item) => {
     if (!activeSession) {
       showNotification("Please tap 'Start Day' to open a session first!", "error");
       return;
     }
     setCart(prev => {
-      const existing = prev.find(i => i.id === popsicle.id);
+      const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        return prev.map(i => i.id === popsicle.id ? { ...i, qty: i.qty + 1 } : i);
+        return prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i);
       }
-      return [...prev, { ...popsicle, qty: 1 }];
+      return [...prev, { ...item, qty: 1 }];
     });
   };
 
@@ -269,7 +270,6 @@ export default function App() {
     }).filter(Boolean));
   };
 
-  // Park / Hold Current Bill
   const handleHoldBill = () => {
     if (cart.length === 0 || !activeSession) return;
 
@@ -291,7 +291,6 @@ export default function App() {
     showNotification(`Bill ${billOrderId} parked on hold!`, "success");
   };
 
-  // Resume a Parked Bill
   const handleResumeBill = (billToResume) => {
     if (cart.length > 0) {
       showNotification("Current register has items. Please record or hold them first!", "error");
@@ -304,13 +303,11 @@ export default function App() {
     showNotification(`Resumed ${billToResume.orderId}`, "success");
   };
 
-  // Discard a Parked Bill
   const handleDiscardHeldBill = (orderId) => {
     setHeldBills(prev => prev.filter(b => b.orderId !== orderId));
     showNotification(`Held bill ${orderId} discarded`, "error");
   };
 
-  // Complete / Record Active Sale
   const handleCheckout = async () => {
     if (cart.length === 0 || !activeSession) return;
     const totalAmount = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
@@ -359,6 +356,7 @@ export default function App() {
       id: newId,
       name: newItemName,
       price: parseFloat(newItemPrice),
+      itemType: "Popsicle",
       category: newItemCategory,
       color: newItemColor
     };
@@ -376,12 +374,28 @@ export default function App() {
   const currentTotal = sessionSales.reduce((acc, curr) => acc + curr.totalAmount, 0);
   const cartTotal = cart.reduce((acc, i) => acc + (i.price * i.qty), 0);
 
-  // Flexible category and price tier filtering
+  // Filter Items by Main Category (Popsicles / Ice Creams) and subcategories (Sizes / Price tiers)
   const filteredItems = items.filter(item => {
-    if (selectedTier === "All") return true;
-    if (selectedTier === "Ice Creams") return item.id.startsWith("fango_");
-    if (selectedTier === "Popsicles") return !item.id.startsWith("fango_");
-    return item.price === parseInt(selectedTier);
+    const isIceCream = item.id.startsWith("fango_") || item.itemType === "Ice Cream";
+    
+    // Main Category Filter
+    if (selectedMainCategory === "Popsicles" && isIceCream) return false;
+    if (selectedMainCategory === "Ice Creams" && !isIceCream) return false;
+
+    // Sub-Filter for Popsicles
+    if (isIceCream) {
+      if (selectedIceCreamSize !== "All") {
+        // match size: Small, Medium, 500ml, 1000ml, 4L
+        const itemSize = item.size || (item.name.includes("(") ? item.name.split("(")[1].replace(")", "").trim() : "");
+        if (itemSize.toLowerCase() !== selectedIceCreamSize.toLowerCase()) return false;
+      }
+    } else {
+      if (selectedPopsicleTier !== "All") {
+        if (item.price !== parseInt(selectedPopsicleTier)) return false;
+      }
+    }
+
+    return true;
   }).sort((a, b) => a.price - b.price);
 
   if (showSplash) {
@@ -489,41 +503,93 @@ export default function App() {
             </div>
           </div>
 
-          {/* Category & Price Filter Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
-            {["All", "Popsicles", "Ice Creams", "10", "25", "30", "40", "50"].map((tier) => (
+          {/* LEVEL 1: MAIN CATEGORIES */}
+          <div className="flex items-center gap-2 pb-2">
+            {[
+              { id: "All", label: `All Items (${items.length})` },
+              { id: "Popsicles", label: "🍭 Popsicles" },
+              { id: "Ice Creams", label: "🍨 Ice Creams" }
+            ].map(cat => (
               <button
-                key={tier}
-                onClick={() => setSelectedTier(tier)}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all ${
-                  selectedTier === tier 
-                    ? "bg-rose-500 text-white shadow-md scale-105" 
-                    : "bg-white text-slate-600 border border-slate-200"
+                key={cat.id}
+                onClick={() => setSelectedMainCategory(cat.id)}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all text-center shadow-xs ${
+                  selectedMainCategory === cat.id
+                    ? "bg-rose-500 text-white shadow-md scale-102"
+                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
                 }`}
               >
-                {tier === "All" ? `All (${items.length})` : isNaN(tier) ? tier : `₹${tier}`}
+                {cat.label}
               </button>
             ))}
           </div>
 
+          {/* LEVEL 2: NESTED SUB-CATEGORIES */}
+          {selectedMainCategory === "Ice Creams" && (
+            <div className="bg-rose-50/70 p-2.5 rounded-2xl border border-rose-100 mb-3 space-y-1.5">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Select Size Container</span>
+                <span className="text-[10px] text-rose-400 font-medium">Fango Flavors</span>
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                {["All", "Small", "Medium", "500ml", "1000ml", "4L"].map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => setSelectedIceCreamSize(size)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold shrink-0 transition-all ${
+                      selectedIceCreamSize === size
+                        ? "bg-rose-600 text-white shadow-xs"
+                        : "bg-white text-rose-900 border border-rose-200"
+                    }`}
+                  >
+                    {size === "All" ? "All Sizes" : size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedMainCategory === "Popsicles" && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
+              {["All", "10", "25", "30", "40", "50"].map((tier) => (
+                <button
+                  key={tier}
+                  onClick={() => setSelectedPopsicleTier(tier)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold shrink-0 transition-all ${
+                    selectedPopsicleTier === tier
+                      ? "bg-slate-800 text-white shadow-xs"
+                      : "bg-white text-slate-600 border border-slate-200"
+                  }`}
+                >
+                  {tier === "All" ? "All Tiers" : `₹${tier}`}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-between items-center mb-2.5">
-            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Menu & Flavors ({filteredItems.length})</h2>
-            <span className="text-[11px] text-slate-400 font-medium">Tap to add quantity</span>
+            <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Flavors ({filteredItems.length})</h2>
+            <span className="text-[11px] text-slate-400 font-medium">Tap to add</span>
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-4">
-            {filteredItems.map((popsicle) => (
-              <div key={popsicle.id} className="bg-white rounded-xl p-3 shadow-xs border border-slate-200 flex flex-col justify-between">
-                <div className={`h-2.5 w-full ${popsicle.color || 'bg-rose-400'} rounded-full mb-2`} />
+            {filteredItems.map((item) => (
+              <div key={item.id} className="bg-white rounded-xl p-3 shadow-xs border border-slate-200 flex flex-col justify-between">
+                <div className={`h-2.5 w-full ${item.color || 'bg-rose-400'} rounded-full mb-2`} />
                 <div>
-                  <h3 className="font-bold text-slate-800 text-sm leading-tight">{popsicle.name}</h3>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold">{popsicle.category}</span>
+                  <h3 className="font-bold text-slate-800 text-sm leading-tight">{item.name}</h3>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold">{item.category}</span>
+                    {item.size && (
+                      <span className="text-[9px] bg-rose-50 text-rose-600 px-1.5 py-0.2 rounded font-black">{item.size}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-3 flex justify-between items-center">
-                  <span className="font-black text-slate-800 text-sm">₹{popsicle.price}</span>
+                  <span className="font-black text-slate-800 text-sm">₹{item.price}</span>
                   <button 
-                    onClick={() => addToCart(popsicle)}
+                    onClick={() => addToCart(item)}
                     className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-lg font-bold hover:bg-rose-500 hover:text-white transition-colors flex items-center gap-1 text-xs shadow-xs"
                   >
                     <Plus size={14} /> Add
@@ -626,7 +692,7 @@ export default function App() {
                     <div className="text-right flex items-center gap-3">
                       <div>
                         <span className="text-base font-black text-emerald-600">₹{session.totalRevenue}</span>
-                        <p className="text-[10px] text-slate-400">{session.ordersCount} sales • {session.totalItems} pops</p>
+                        <p className="text-[10px] text-slate-400">{session.ordersCount} sales • {session.totalItems} items</p>
                       </div>
                       {isExpanded ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
                     </div>
@@ -695,12 +761,12 @@ export default function App() {
           </div>
 
           <form onSubmit={handleAddPopsicle} className="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 space-y-3">
-            <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Item</h3>
+            <h3 className="font-bold text-xs text-slate-700 uppercase">Add New Popsicle</h3>
             
             <div className="space-y-2">
               <input 
                 type="text" 
-                placeholder="Item Name (e.g. Vanilla Scoop)" 
+                placeholder="Item Name (e.g. Lime Mint)" 
                 className="w-full text-xs border border-slate-200 rounded-lg p-2.5 outline-none focus:border-rose-500"
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
@@ -781,7 +847,7 @@ export default function App() {
         </div>
       )}
 
-      {/* FLOATING CART SHEET WITH RECORD & HOLD ACTIONS */}
+      {/* FLOATING CART SHEET */}
       {activeTab === "session" && cart.length > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-md mx-auto pointer-events-none z-20 px-2">
           <div className="bg-white/95 border border-slate-200 rounded-2xl shadow-2xl p-3.5 pointer-events-auto backdrop-blur-md">
@@ -835,7 +901,7 @@ export default function App() {
         </div>
       )}
 
-      {/* SESSION SUMMARY POPUP MODAL */}
+      {/* SESSION SUMMARY POPUP */}
       {completedSummary && (
         <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
@@ -876,7 +942,7 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM NAVIGATION WITH HELD TAB & BADGE */}
+      {/* BOTTOM NAVIGATION */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-slate-200 h-16 flex justify-around items-center z-30 shadow-lg">
         <button 
           onClick={() => setActiveTab("session")}
