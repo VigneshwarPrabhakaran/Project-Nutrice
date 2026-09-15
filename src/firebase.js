@@ -3,13 +3,13 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDL9PlW5EtkK3Q4Y9ZvKICdKAulwOyXYtA",
-  authDomain: "project-nutrice.firebaseapp.com",
-  projectId: "project-nutrice",
-  storageBucket: "project-nutrice.firebasestorage.app",
-  messagingSenderId: "437158678560",
-  appId: "1:437158678560:web:f255b87d8f9c8b8bb9ec45",
-  measurementId: "G-T704R6NDDK"
+  apiKey: "AIzaSyAV_scHiCr2NgY1kE5i6v9WR_kXNP1zvhg",
+  authDomain: "project-nutrice-914c6.firebaseapp.com",
+  projectId: "project-nutrice-914c6",
+  storageBucket: "project-nutrice-914c6.firebasestorage.app",
+  messagingSenderId: "127711837566",
+  appId: "1:127711837566:web:6ad8e430eb22d06630472f",
+  measurementId: "G-0DN2P3N3BQ"
 };
 
 const app = initializeApp(firebaseConfig);
